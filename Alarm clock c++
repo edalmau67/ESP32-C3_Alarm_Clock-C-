@@ -1,20 +1,20 @@
 /********************************************************************************
-Transistor used for piezo buzzer: 
+Transistor usado para el zumbador piezoeléctrico: 
 https://media.digikey.com/pdf/Data%20Sheets/ON%20Semiconductor%20PDFs/PN2222.pdf
 ********************************************************************************/
 
 /*******************************************
-Level shifter used for LCD display:
-https:www.ti.com/lit/ds/symlink/txs0108e.pdf
+Convertidor de nivel lógico usado para la pantalla LCD:
+https://www.ti.com/lit/ds/symlink/txs0108e.pdf
 ********************************************/
 
 /*****************************
-Time API
+API de hora
 https://www.worldtimeapi.org/
 *****************************/
 
 /***********************
-Weather API
+API del clima
 https://open-meteo.com/
 ***********************/
 
@@ -26,21 +26,27 @@ https://open-meteo.com/
 #include <ArduinoJson.h>
 #include <LiquidCrystal_I2C.h>
 
+// Dirección y dimensiones de la pantalla LCD
 #define I2C_ADDR    0x27
 #define LCD_COLUMNS 16
 #define LCD_LINES   2
 
+// Variables de estado y temporizadores
 uint8_t state;
 unsigned long clockTimer;
 unsigned long weatherAPItimer;
 unsigned long weatherDisplayTimer;
 
+// Credenciales de WiFi
 const char* password = "";
 const char* ssid = "Wokwi-GUEST";
 
+// Variables para entrada de teclado
 uint8_t valIndex;
 uint8_t cursorPos;
 char entered_value [6];
+
+// Configuración del teclado matricial
 const uint8_t ROWS = 4;
 const uint8_t COLS = 4;
 char keys[ROWS][COLS] = {
@@ -52,10 +58,12 @@ char keys[ROWS][COLS] = {
 uint8_t colPins[COLS] = { 1, 0, 3, 2 };
 uint8_t rowPins[ROWS] = { 4, 5, 6, 7 };
 
+// Inicialización de objetos
 LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLUMNS, LCD_LINES);
 Clock rtc(&lcd);
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
+// Función para ingresar la hora manualmente
 void enterTime()
 {
   state = 1;
@@ -64,13 +72,14 @@ void enterTime()
   valIndex = 0;
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Set clock then  ");
+  lcd.print("Ajustar reloj y   ");
   lcd.setCursor(0, 1);
-  lcd.print("press # to save.");
+  lcd.print("presione # para guardar.");
   delay(3000);
   lcd.clear();
 }
 
+// Función para ingresar la hora de alarma
 void enterAlarm()
 {
   state = 2;
@@ -79,13 +88,14 @@ void enterAlarm()
   valIndex = 0;
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Enter alarm time");
+  lcd.print("Hora de alarma    ");
   lcd.setCursor(0, 1);
-  lcd.print("press # to save.");
+  lcd.print("presione # para guardar.");
   delay(3000);
   lcd.clear();
 }
 
+// Agrega un carácter ingresado al valor
 void nextChar(char key)
 {
   if (valIndex < 6)
@@ -98,6 +108,7 @@ void nextChar(char key)
   }
 }
 
+// Borra el último carácter ingresado
 void eraseChar()
 {
   if (valIndex > 0 )
@@ -111,6 +122,7 @@ void eraseChar()
   }
 }
 
+// Estado 0: menú principal
 void keyPadState0()
 {
   char key = keypad.getKey();
@@ -123,25 +135,26 @@ void keyPadState0()
       enterTime();
       break;
     case '#':
-      rtc.silence();
+      rtc.silence(); // Silenciar alarma
       break;
     case '*':
-      rtc.addToSnooze();
+      rtc.addToSnooze(); // Posponer alarma
       break;
   }
 }
 
+// Estado 1: ingreso de hora
 void keyPadState1()
 {
   char key = keypad.getKey();
   switch(key)
   {
     case '#':
-      rtc.setTime(entered_value);
+      rtc.setTime(entered_value); // Guardar hora
       state = 0;
       break;
     case '*':
-      eraseChar();
+      eraseChar(); // Borrar carácter
       break;
     default:
       if (isDigit(key))
@@ -152,17 +165,18 @@ void keyPadState1()
   }
 }
 
+// Estado 2: ingreso de alarma
 void keyPadState2()
 {
   char key = keypad.getKey();
   switch(key)
   {
     case '#':
-      rtc.setAlarm(entered_value);
+      rtc.setAlarm(entered_value); // Guardar alarma
       state = 0;
       break;
     case '*':
-      eraseChar();
+      eraseChar(); // Borrar carácter
       break;
     default:
       if (isDigit(key))
@@ -173,6 +187,7 @@ void keyPadState2()
   }
 }
 
+// Determina qué función de teclado ejecutar según el estado
 void getInput()
 {
   switch (state)
@@ -189,11 +204,12 @@ void getInput()
   }
 }
 
+// Configuración inicial
 void setup() 
 {
-  pinMode(8, OUTPUT);
-  pinMode(10, OUTPUT);
-  Wire.begin(18, 19);
+  pinMode(8, OUTPUT); // Salida para zumbador
+  pinMode(10, OUTPUT); // Salida adicional
+  Wire.begin(18, 19); // Pines I2C
   lcd.init();
   lcd.backlight();
   WiFi.begin(ssid, password);
@@ -203,36 +219,47 @@ void setup()
     delay(1000);
   }
   lcd.clear();
+
+  // Intentar obtener hora desde API
   if (!rtc.setTimeFromAPI())
   {
     char t [] = __TIME__;
     char compileTime [] = { t[0], t[1], t[3], t[4], t[6], t[7] };
-    rtc.setTime(compileTime);
+    rtc.setTime(compileTime); // Usar hora de compilación si falla la API
   }
-  getWeather(lcd);
-  printWeather(lcd);
+
+  getWeather(lcd);      // Obtener datos del clima
+  printWeather(lcd);    // Mostrar clima en pantalla
 }
 
+// Bucle principal
 void loop() 
 {
   if (state == 0)
   {
     unsigned long millisNow = millis();
+
+    // Actualizar reloj cada segundo
     if (millisNow - clockTimer >= 1000)
     {
       clockTimer = millisNow;
       rtc.updateClock();
     }
+
+    // Mostrar clima cada 10 segundos
     if (millisNow - weatherDisplayTimer >= 10000)
     {
       weatherDisplayTimer = millisNow;
       printWeather(lcd);
     }
+
+    // Actualizar datos del clima cada hora
     if (millisNow - weatherAPItimer >= 3600000)
     {
       weatherAPItimer = millisNow;
       getWeather(lcd);
     }
   }
-  getInput(); 
+
+  getInput(); // Leer entrada del teclado
 }
